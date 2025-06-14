@@ -31,7 +31,7 @@
         padding: 1rem;
         max-width: 90vw; /* Largura máxima para mobile */
         max-height: 95vh; /* Altura máxima para mobile */
-        /* REMOVIDO: aspect-ratio: 9/16; para maior responsividade */
+        aspect-ratio: 9/16; /* Proporção de tela vertical (celular) */
         position: relative;
         overflow: hidden;
       }
@@ -103,7 +103,7 @@
   </head>
   <body>
     <div id="gameContainer" class="flex flex-col items-center justify-center">
-      <h1 class="text-white text-2xl font-bold mb-4">Quebra-Cabeça Químico</h1>
+      <h1 class="text-white text-2xl font-bold mb-4">Química Puzzle</h1>
       <canvas id="gameCanvas"></canvas>
       <div id="controls">
         <!-- Futuros botões ou controles podem vir aqui -->
@@ -198,7 +198,7 @@
 
         elements.forEach((element) => {
           const row = element.row;
-          const col = element.col;
+          const col = element.col.replace(";", ""); // Remover ponto e vírgula extra se houver
           element.x = startX + col * (ELEMENT_RADIUS * 2);
           element.y = GAME_PADDING + row * (ELEMENT_RADIUS * 2 * 0.866);
         });
@@ -708,7 +708,7 @@
         }
       }
 
-      // Função que de fato lança o projétil
+      // NOVA: Função que de fato lança o projétil
       function launchProjectile(inputX, inputY) {
         // Só permite o disparo se puder atirar e não houver animação
         if (!canShoot || !shooterElement || isAnimating) return;
@@ -738,7 +738,7 @@
         canShoot = false; // Desativa o disparo
       }
 
-      // Lida com o pressionar do botão do rato (apenas mira, não dispara)
+      // NOVA: Lida com o pressionar do botão do rato (apenas mira, não dispara)
       function handleMouseDown(event) {
         if (canShoot && shooterElement && !isAnimating) {
           const rect = canvas.getBoundingClientRect();
@@ -747,7 +747,7 @@
         }
       }
 
-      // Lida com o soltar do botão do rato (dispara)
+      // NOVA: Lida com o soltar do botão do rato (dispara)
       function handleMouseUp(event) {
         if (canShoot && shooterElement && !isAnimating) {
           // Usa a posição atual da mira para lançar
@@ -755,7 +755,7 @@
         }
       }
 
-      // Lida com o início do toque (apenas mira, não dispara)
+      // NOVA: Lida com o início do toque (apenas mira, não dispara)
       function handleTouchStart(event) {
         if (
           canShoot &&
@@ -794,7 +794,7 @@
         }
       }
 
-      // Lida com o fim do toque (dispara)
+      // NOVA: Lida com o fim do toque (dispara)
       function handleTouchEnd(event) {
         if (canShoot && shooterElement && !isAnimating) {
           // Usa a última posição da mira para lançar (que foi atualizada por touchmove)
@@ -832,6 +832,7 @@
         initializeGame();
         gameLoop();
       };
+      // Removed old combined handler and added separated ones
       canvas.addEventListener("mousedown", handleMouseDown);
       canvas.addEventListener("mouseup", handleMouseUp); // Dispara ao soltar o rato
       canvas.addEventListener("touchstart", handleTouchStart);
