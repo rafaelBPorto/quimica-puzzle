@@ -17,7 +17,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        min-height: 100vh;
+        min-height: 100vh; /* Garante que o body ocupe a altura total da viewport */
         margin: 0;
         overflow: hidden; /* Evita barras de rolagem */
       }
@@ -30,10 +30,10 @@
         align-items: center;
         padding: 1rem;
         max-width: 90vw; /* Largura máxima para mobile */
-        max-height: 95vh; /* Altura máxima para mobile */
-        /* REMOVIDO: aspect-ratio: 9/16; para maior responsividade */
         position: relative;
-        overflow: hidden;
+        flex-grow: 1;
+        height: calc(100vh - 2rem); /* 2rem para um padding/margin vertical */
+        overflow-y: auto; /* Adicionado para permitir scroll se o conteúdo for muito grande em telas pequenas */
       }
       canvas {
         background-color: #3f51b5; /* Cor de fundo do canvas (azul) */
@@ -42,7 +42,7 @@
         touch-action: none; /* Previne o comportamento padrão do navegador em toque */
         flex-grow: 1; /* Faz o canvas ocupar o espaço disponível */
         width: 100%; /* Adapta a largura ao container */
-        height: 100%; /* Adapta a altura ao container */
+        /* A altura será definida dinamicamente no JS */
       }
       #controls {
         display: flex;
@@ -99,6 +99,39 @@
         cursor: pointer;
         margin-top: 10px;
       }
+
+      /* Estilos para a curiosidade Gemini e indicador de carregamento */
+      #factDisplay {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(0, 0, 0, 0.85); /* Fundo semi-transparente */
+        color: white;
+        padding: 1.5rem;
+        border-radius: 1rem;
+        box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
+        z-index: 1000;
+        text-align: center;
+        max-width: 80%; /* Para mobile */
+        transition: opacity 0.5s ease-in-out; /* Transição de opacidade */
+      }
+      #factTextContent {
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+      }
+      #loadingIndicator {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        padding: 0.75rem 1.5rem;
+        border-radius: 9999px; /* Pill shape */
+        box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
+        z-index: 2000; /* Acima do factDisplay */
+      }
     </style>
   </head>
   <body>
@@ -108,17 +141,27 @@
       <div id="controls">
         <!-- Futuros botões ou controles podem vir aqui -->
       </div>
-      <!-- Novo elemento para rastrear as moléculas formadas -->
+      <!-- Elemento para rastrear as moléculas formadas -->
       <div
         id="moleculeTracker"
         class="text-white text-sm mt-4 w-full flex flex-wrap justify-center gap-4"
       >
         <!-- Contadores de moléculas serão renderizados aqui dinamicamente -->
       </div>
+      <!-- Caixa de mensagem geral do jogo -->
       <div id="messageBox" class="message-box">
         <p id="messageText"></p>
         <button id="closeMessageButton">OK</button>
       </div>
+
+      <!-- NOVO: Elemento para exibir curiosidades Gemini -->
+      <div id="factDisplay" class="hidden opacity-0">
+        <p id="factTextContent"></p>
+        <p class="text-sm mt-1 text-gray-400">✨ Curiosidade da Molécula ✨</p>
+      </div>
+
+      <!-- NOVO: Indicador de carregamento Gemini -->
+      <div id="loadingIndicator" class="hidden">A carregar...</div>
     </div>
 
     <script>
@@ -129,15 +172,18 @@
       const messageText = document.getElementById("messageText");
       const closeMessageButton = document.getElementById("closeMessageButton");
       const moleculeTrackerDiv = document.getElementById("moleculeTracker");
+      const factDisplayDiv = document.getElementById("factDisplay"); // Novo elemento
+      const factTextContent = document.getElementById("factTextContent"); // Novo elemento
+      const loadingIndicator = document.getElementById("loadingIndicator"); // Novo elemento
 
-      let elements = []; // Elementos na parte superior da tela (estáticos ou em animação)
-      let shooterElement = null; // Elemento para ser atirado
-      let projectile = null; // Elemento em voo
-      let canShoot = true; // Controla se pode atirar novamente
-      let moleculeCounts = {}; // Armazena a contagem de cada molécula
+      let elements = [];
+      let shooterElement = null;
+      let projectile = null;
+      let canShoot = true;
+      let moleculeCounts = {};
 
-      let activeAnimations = []; // Array para guardar as animações em curso
-      let isAnimating = false; // Flag para bloquear o disparo durante animações
+      let activeAnimations = [];
+      let isAnimating = false;
 
       // Variáveis para a linha de mira
       let aimTargetX = 0;
@@ -147,6 +193,11 @@
       const INITIAL_ROWS = 4;
       const GAME_PADDING = 20;
       const BOUNCE_FACTOR = 0.9;
+
+      // Gemini API Configuration (chave será injetada pelo ambiente Canvas)
+      const GEMINI_API_KEY = "";
+      const GEMINI_API_URL =
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
       // Definição dos elementos químicos
       const chemicalElements = {
@@ -168,25 +219,29 @@
       // Redimensiona o canvas para preencher o gameContainer
       function resizeCanvas() {
         canvas.width = gameContainer.clientWidth - GAME_PADDING * 2;
+
         const headerHeight = gameContainer.querySelector("h1").offsetHeight;
         const controlsHeight =
           gameContainer.querySelector("#controls").offsetHeight;
         const moleculeTrackerHeight = moleculeTrackerDiv.offsetHeight;
-        const totalUIHeight =
-          headerHeight +
-          controlsHeight +
-          moleculeTrackerHeight +
-          GAME_PADDING * 2;
+        const gameContainerPaddingY =
+          parseFloat(getComputedStyle(gameContainer).paddingTop) +
+          parseFloat(getComputedStyle(gameContainer).paddingBottom);
 
-        canvas.height = gameContainer.clientHeight - totalUIHeight;
+        const availableCanvasHeight =
+          gameContainer.clientHeight -
+          headerHeight -
+          controlsHeight -
+          moleculeTrackerHeight -
+          gameContainerPaddingY;
 
-        if (canvas.width < 100) canvas.width = 100;
-        if (canvas.height < 100) canvas.height = 100;
+        canvas.height = availableCanvasHeight > 0 ? availableCanvasHeight : 100;
 
         if (elements.length === 0 && shooterElement === null) {
           initializeGame();
-        } else if (elements.length > 0) {
+        } else {
           repositionElements();
+          generateShooterElement(); // Garante que o atirador seja reposicionado após o redimensionamento
         }
       }
 
@@ -273,7 +328,6 @@
       function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Desenha elementos que NÃO fazem parte de uma animação ativa
         const animatingElementIds = new Set();
         activeAnimations.forEach((anim) => {
           anim.originalElementIds.forEach((id) => animatingElementIds.add(id));
@@ -281,7 +335,7 @@
 
         elements.forEach((element) => {
           if (!animatingElementIds.has(element.id)) {
-            drawElement(element); // Desenha elementos estáticos
+            drawElement(element);
           }
         });
 
@@ -289,7 +343,6 @@
           drawElement(shooterElement);
         }
 
-        // Desenha a linha de mira (apenas se puder atirar e não houver animação)
         if (canShoot && shooterElement && !isAnimating) {
           ctx.beginPath();
           ctx.setLineDash([5, 5]);
@@ -315,21 +368,19 @@
           ctx.closePath();
         }
 
-        // Desenha o projétil em voo
         if (projectile) {
           drawElement(projectile);
         }
 
-        // Desenha as animações ativas (elementos a unir-se, nome da molécula)
         drawActiveAnimations();
       }
 
-      // Desenha as animações em curso
+      // Desenha as animações em curso (elementos se unindo, nome da molécula)
       function drawActiveAnimations() {
         activeAnimations.forEach((anim) => {
           const currentTime = Date.now();
-          const phaseOneDuration = anim.duration; // Fase de união
-          const phaseTwoDuration = anim.showNameDuration; // Fase de mostrar o nome
+          const phaseOneDuration = anim.duration;
+          const phaseTwoDuration = anim.showNameDuration;
 
           const progressPhaseOne =
             (currentTime - anim.startTime) / phaseOneDuration;
@@ -338,15 +389,12 @@
             phaseTwoDuration;
 
           if (progressPhaseOne < 1) {
-            // Fase 1: Elementos a unirem-se
             anim.animatedElements.forEach((el) => {
-              // Interpola a posição do inicial para o alvo
               el.currentX =
                 el.initialX + (anim.targetX - el.initialX) * progressPhaseOne;
               el.currentY =
                 el.initialY + (anim.targetY - el.initialY) * progressPhaseOne;
 
-              // Desenha o elemento animado
               ctx.beginPath();
               ctx.arc(el.currentX, el.currentY, el.radius, 0, Math.PI * 2);
               ctx.fillStyle = el.color;
@@ -364,9 +412,8 @@
             });
           }
 
-          // Fase 2: Mostra o nome da molécula (começa após a união, desaparece)
           if (progressPhaseOne >= 1 && progressPhaseTwo < 1) {
-            const fadeAlpha = 1 - progressPhaseTwo; // Desaparece de 1 para 0
+            const fadeAlpha = 1 - progressPhaseTwo;
             if (fadeAlpha > 0) {
               ctx.fillStyle = "rgba(255, 255, 255, " + fadeAlpha + ")";
               ctx.font = "bold 30px Inter";
@@ -380,12 +427,10 @@
 
       // Atualiza a lógica do jogo
       function update() {
-        // Mover e verificar colisões do projétil
         if (projectile) {
           projectile.x += projectile.vx;
           projectile.y += projectile.vy;
 
-          // Lógica de Ricochete
           if (
             projectile.x + projectile.radius > canvas.width ||
             projectile.x - projectile.radius < 0
@@ -402,7 +447,6 @@
             projectile.y = projectile.radius;
           }
 
-          // Verificar colisão com os elementos fixos (apenas se não houver animação em curso)
           let hit = false;
           if (!isAnimating) {
             for (let i = 0; i < elements.length; i++) {
@@ -413,7 +457,6 @@
 
               if (distance < projectile.radius + element.radius) {
                 hit = true;
-                // Adicionar o projétil como um novo elemento fixo
                 elements.push({
                   symbol: projectile.symbol,
                   color: projectile.color,
@@ -425,16 +468,15 @@
                   attachedTo: element.id,
                 });
                 projectile = null;
-                canShoot = false; // Bloqueia disparo até animações terminarem
+                canShoot = false;
                 generateShooterElement();
 
-                checkForMolecules(); // Inicia a verificação de moléculas e a fila de animação
+                checkForMolecules();
                 break;
               }
             }
           }
 
-          // Se o projétil atingiu o topo e não há elementos, fixa-o no topo (se não estiver animando)
           if (!hit && projectile.y - projectile.radius <= 0 && !isAnimating) {
             elements.push({
               symbol: projectile.symbol,
@@ -446,12 +488,11 @@
               id: Date.now() + Math.random(),
             });
             projectile = null;
-            canShoot = false; // Bloqueia disparo
+            canShoot = false;
             generateShooterElement();
-            checkForMolecules(); // Inicia verificação de moléculas
+            checkForMolecules();
           }
 
-          // Se o projétil saiu da tela por baixo (se houver ricochete, menos provável)
           if (
             projectile &&
             projectile.y > canvas.height + projectile.radius &&
@@ -463,17 +504,16 @@
           }
         }
 
-        // Processa as animações ativas a cada frame
         processAnimations();
 
-        // Só permite atirar se não houver projétil e nenhuma animação ativa
-        canShoot = projectile === null && activeAnimations.length === 0;
+        canShoot =
+          projectile === null &&
+          activeAnimations.length === 0 &&
+          !factDisplayDiv.classList.contains("opacity-100"); // Bloqueia o disparo se a curiosidade estiver visível
 
-        // Verifica condição de vitória/derrota
         if (elements.length === 0 && canShoot) {
           showMessage("Você venceu! Todos os elementos foram eliminados!");
         }
-        // Adicionar condição de derrota aqui, se desejar (ex: elementos atingem uma linha inferior)
       }
 
       // Processa as animações em curso
@@ -482,35 +522,137 @@
         let animationsToKeep = [];
         let shouldCheckForNewMoleculesAfterAnimation = false;
 
-        activeAnimations.forEach((anim) => {
+        for (let i = 0; i < activeAnimations.length; i++) {
+          const anim = activeAnimations[i];
           const totalAnimationDuration = anim.duration + anim.showNameDuration;
+          const factShowStartTime = anim.startTime + totalAnimationDuration;
+          const factHideTime = factShowStartTime + anim.factDisplayDuration;
 
-          if (currentTime - anim.startTime >= totalAnimationDuration) {
-            // Animação completamente terminada (união + mostrar nome)
-            // Remover os elementos originais do array principal 'elements'
+          // Fase de união e nome da molécula
+          if (currentTime - anim.startTime < totalAnimationDuration) {
+            animationsToKeep.push(anim);
+          }
+          // Tempo de pedir a curiosidade (depois da união, antes do nome desaparecer)
+          else if (
+            currentTime - anim.startTime >= anim.duration &&
+            currentTime - anim.startTime < totalAnimationDuration &&
+            !anim.factRequested
+          ) {
+            anim.factRequested = true;
+            requestMoleculeFact(anim);
+            animationsToKeep.push(anim); // Manter a animação enquanto espera a curiosidade
+          }
+          // Tempo de exibir a curiosidade
+          else if (
+            anim.geminiFact &&
+            currentTime - factShowStartTime >= 0 &&
+            currentTime - factShowStartTime < anim.factDisplayDuration
+          ) {
+            if (!factDisplayDiv.classList.contains("opacity-100")) {
+              displayFact(anim.geminiFact);
+            }
+            animationsToKeep.push(anim);
+          }
+          // Animação completamente terminada (união + nome + curiosidade)
+          else if (anim.geminiFact && currentTime - factHideTime >= 0) {
             elements = elements.filter(
               (el) => !anim.originalElementIds.includes(el.id)
             );
-            shouldCheckForNewMoleculesAfterAnimation = true; // Sinaliza para verificar efeitos em cascata
-          } else {
-            // Animação ainda em curso, mantém-na
-            animationsToKeep.push(anim);
+            shouldCheckForNewMoleculesAfterAnimation = true;
+            hideFact(); // Garante que a curiosidade seja escondida
           }
-        });
-
-        activeAnimations = animationsToKeep; // Atualiza a lista de animações ativas
-
-        if (shouldCheckForNewMoleculesAfterAnimation) {
-          dropOrphanElements(); // Faz com que os elementos soltos caiam
-          checkForMolecules(); // Isso é a chamada em cascata para novas formações
-          updateMoleculeTrackerDisplay(); // Atualiza o display após potenciais mudanças
+          // Animação completamente terminada SEM curiosidade (caso a API falhe ou não seja solicitada)
+          else if (
+            !anim.geminiFact &&
+            currentTime - anim.startTime >= totalAnimationDuration
+          ) {
+            elements = elements.filter(
+              (el) => !anim.originalElementIds.includes(el.id)
+            );
+            shouldCheckForNewMoleculesAfterAnimation = true;
+          } else {
+            animationsToKeep.push(anim); // Mantém as outras animações na fila
+          }
         }
 
-        // A flag isAnimating é verdadeira se houver animações ativas
-        isAnimating = activeAnimations.length > 0;
+        activeAnimations = animationsToKeep;
+
+        if (shouldCheckForNewMoleculesAfterAnimation) {
+          dropOrphanElements();
+          checkForMolecules(); // Tenta encontrar a próxima molécula na cadeia
+        }
+
+        isAnimating =
+          activeAnimations.length > 0 ||
+          factDisplayDiv.classList.contains("opacity-100"); // isAnimating agora também considera a curiosidade
       }
 
-      // Exibe uma caixa de mensagem
+      // Função para chamar a API Gemini e obter a curiosidade
+      async function requestMoleculeFact(animObject) {
+        if (!GEMINI_API_KEY) {
+          console.error("Gemini API Key is not set.");
+          animObject.geminiFact = "Erro: Chave de API Gemini não configurada.";
+          return;
+        }
+
+        loadingIndicator.classList.remove("hidden"); // Mostrar indicador de carregamento
+
+        const prompt = `Forneça uma curiosidade curta e interessante (1-2 frases) sobre a molécula ${animObject.molName}.`;
+        let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
+        const payload = { contents: chatHistory };
+
+        try {
+          const response = await fetch(
+            `${GEMINI_API_URL}?key=${GEMINI_API_KEY}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            }
+          );
+          const result = await response.json();
+
+          if (
+            result.candidates &&
+            result.candidates.length > 0 &&
+            result.candidates[0].content &&
+            result.candidates[0].content.parts &&
+            result.candidates[0].content.parts.length > 0
+          ) {
+            const fact = result.candidates[0].content.parts[0].text;
+            animObject.geminiFact = fact; // Armazena a curiosidade no objeto da animação
+            animObject.factDisplayStartTime = Date.now(); // Marca o início da exibição da curiosidade
+          } else {
+            animObject.geminiFact = `Não foi possível obter uma curiosidade sobre ${animObject.molName}.`;
+            console.error("Resposta inesperada da API Gemini:", result);
+          }
+        } catch (error) {
+          console.error("Erro ao chamar a API Gemini:", error);
+          animObject.geminiFact = `Erro ao carregar curiosidade para ${animObject.molName}.`;
+        } finally {
+          loadingIndicator.classList.add("hidden"); // Esconder indicador de carregamento
+        }
+      }
+
+      // Exibe a curiosidade no ecrã
+      function displayFact(factText) {
+        factTextContent.textContent = factText;
+        factDisplayDiv.classList.remove("hidden");
+        setTimeout(() => {
+          factDisplayDiv.classList.add("opacity-100");
+        }, 10);
+      }
+
+      // Esconde a curiosidade do ecrã
+      function hideFact() {
+        factDisplayDiv.classList.remove("opacity-100");
+        setTimeout(() => {
+          factDisplayDiv.classList.add("hidden");
+          factTextContent.textContent = "";
+        }, 500);
+      }
+
+      // Exibe uma caixa de mensagem geral do jogo
       function showMessage(msg) {
         messageText.textContent = msg;
         messageBox.style.display = "block";
@@ -519,7 +661,7 @@
       // Esconde a caixa de mensagem e reinicia o jogo
       closeMessageButton.addEventListener("click", () => {
         messageBox.style.display = "none";
-        initializeGame(); // Reinicia o jogo
+        initializeGame();
       });
 
       // Verifica e remove moléculas
@@ -531,8 +673,6 @@
           return;
         }
 
-        // Criar um conjunto temporário de IDs de elementos que estão atualmente envolvidos
-        // em animações na fila, para não tentarmos formar novas moléculas com eles.
         const elementsInQueuedAnimations = new Set();
         activeAnimations.forEach((anim) => {
           anim.originalElementIds.forEach((id) =>
@@ -540,14 +680,12 @@
           );
         });
 
-        // Percorre o array 'elements' atual para encontrar uma molécula
         for (const molName in chemicalMolecules) {
           const requiredSymbols = chemicalMolecules[molName];
 
           for (let i = 0; i < elements.length; i++) {
             const currentElement = elements[i];
 
-            // Pular elementos que já estão envolvidos numa animação em fila
             if (elementsInQueuedAnimations.has(currentElement.id)) {
               continue;
             }
@@ -564,7 +702,6 @@
               continue;
             }
 
-            // Encontrar outros elementos para a molécula
             const candidateElements = elements.filter(
               (el) =>
                 !potentialMolecule.includes(el) &&
@@ -588,11 +725,9 @@
                 remainingSymbols.splice(otherIndex, 1);
 
                 if (remainingSymbols.length === 0) {
-                  // Molécula encontrada! Adiciona uma animação para ela à fila.
                   const center = calculateCenter(potentialMolecule);
                   activeAnimations.push({
                     type: "moleculeForm",
-                    // Copia os elementos e suas posições iniciais para a animação
                     animatedElements: potentialMolecule.map((el) => ({
                       ...el,
                       currentX: el.x,
@@ -600,31 +735,31 @@
                       initialX: el.x,
                       initialY: el.y,
                     })),
-                    originalElementIds: potentialMolecule.map((el) => el.id), // Guarda os IDs originais para remoção posterior
+                    originalElementIds: potentialMolecule.map((el) => el.id),
                     targetX: center.x,
                     targetY: center.y,
                     molName: molName,
                     startTime: Date.now(),
-                    duration: 300, // Duração da fase de união (ms)
-                    showNameDuration: 700, // Duração da fase de exibição do nome (ms)
+                    duration: 300,
+                    showNameDuration: 700,
+                    geminiFact: null,
+                    factRequested: false,
+                    factDisplayStartTime: 0,
+                    factDisplayDuration: 4000,
                   });
 
-                  // Incrementar a contagem da molécula imediatamente
                   if (moleculeCounts.hasOwnProperty(molName)) {
                     moleculeCounts[molName]++;
                   } else {
                     moleculeCounts[molName] = 1;
                   }
+                  updateMoleculeTrackerDisplay(); // CHAVE: Atualiza o display do contador aqui!
 
-                  // Adicionar os IDs dos elementos desta animação recém-enfileirada ao conjunto
-                  // para evitar que sejam reavaliados para outras moléculas nesta mesma chamada de `checkForMolecules`.
                   potentialMolecule.forEach((el) =>
                     elementsInQueuedAnimations.add(el.id)
                   );
 
-                  isAnimating = true; // Sinaliza que a animação está ativa
-
-                  // Retorna para processar uma animação de cada vez, permitindo a reação em cadeia sequencial
+                  isAnimating = true;
                   return;
                 }
               }
@@ -649,12 +784,11 @@
 
       // Função para atualizar o display do rastreador de moléculas
       function updateMoleculeTrackerDisplay() {
-        moleculeTrackerDiv.innerHTML = ""; // Limpa o conteúdo anterior
+        moleculeTrackerDiv.innerHTML = "";
 
         for (const molName in chemicalMolecules) {
-          // Percorre todas as moléculas definidas
           const molDiv = document.createElement("div");
-          molDiv.className = "molecule-item"; // Classe para estilização
+          molDiv.className = "molecule-item";
           molDiv.innerHTML = `
                     <span>${molName}</span>
                     <span class="count">${
@@ -674,7 +808,6 @@
         const connectedElements = new Set();
         const queue = [];
 
-        // Adiciona todos os elementos na primeira linha (topo) que ainda existem para a fila
         elements
           .filter((el) => el.y <= GAME_PADDING + ELEMENT_RADIUS + 10)
           .forEach((el) => {
@@ -685,7 +818,6 @@
         let head = 0;
         while (head < queue.length) {
           const current = queue[head++];
-          // Encontra vizinhos do elemento atual
           elements.forEach((neighbor) => {
             if (!connectedElements.has(neighbor.id)) {
               const dx = current.x - neighbor.x;
@@ -699,7 +831,6 @@
           });
         }
 
-        // Filtra para manter apenas os elementos conectados
         const initialCount = elements.length;
         elements = elements.filter((el) => connectedElements.has(el.id));
 
@@ -710,10 +841,8 @@
 
       // Função que de fato lança o projétil
       function launchProjectile(inputX, inputY) {
-        // Só permite o disparo se puder atirar e não houver animação
         if (!canShoot || !shooterElement || isAnimating) return;
 
-        // Calcular a direção do projétil
         const dx = inputX - shooterElement.x;
         const dy = inputY - shooterElement.y;
         const angle = Math.atan2(dy, dx);
@@ -722,7 +851,7 @@
         const minAngle = -Math.PI * 0.9;
         const clampedAngle = Math.max(minAngle, Math.min(maxAngle, angle));
 
-        const speed = 10; // Velocidade do projétil
+        const speed = 10;
 
         projectile = {
           symbol: shooterElement.symbol,
@@ -735,7 +864,7 @@
           vy: speed * Math.sin(clampedAngle),
         };
 
-        canShoot = false; // Desativa o disparo
+        canShoot = false;
       }
 
       // Lida com o pressionar do botão do rato (apenas mira, não dispara)
@@ -750,7 +879,6 @@
       // Lida com o soltar do botão do rato (dispara)
       function handleMouseUp(event) {
         if (canShoot && shooterElement && !isAnimating) {
-          // Usa a posição atual da mira para lançar
           launchProjectile(aimTargetX, aimTargetY);
         }
       }
@@ -766,7 +894,7 @@
           const rect = canvas.getBoundingClientRect();
           aimTargetX = event.touches[0].clientX - rect.left;
           aimTargetY = event.touches[0].clientY - rect.top;
-          event.preventDefault(); // Previne o comportamento padrão do navegador (ex: scroll)
+          event.preventDefault();
         }
       }
 
@@ -797,7 +925,6 @@
       // Lida com o fim do toque (dispara)
       function handleTouchEnd(event) {
         if (canShoot && shooterElement && !isAnimating) {
-          // Usa a última posição da mira para lançar (que foi atualizada por touchmove)
           launchProjectile(aimTargetX, aimTargetY);
         }
       }
@@ -816,9 +943,9 @@
         canShoot = true;
         projectile = null;
         messageBox.style.display = "none";
-        activeAnimations = []; // Limpa animações pendentes
+        activeAnimations = [];
+        hideFact(); // Garante que a curiosidade esteja escondida ao iniciar o jogo
 
-        // Inicializa a contagem de moléculas
         for (const molName in chemicalMolecules) {
           moleculeCounts[molName] = 0;
         }
@@ -833,9 +960,9 @@
         gameLoop();
       };
       canvas.addEventListener("mousedown", handleMouseDown);
-      canvas.addEventListener("mouseup", handleMouseUp); // Dispara ao soltar o rato
+      canvas.addEventListener("mouseup", handleMouseUp);
       canvas.addEventListener("touchstart", handleTouchStart);
-      canvas.addEventListener("touchend", handleTouchEnd); // Dispara ao soltar o toque
+      canvas.addEventListener("touchend", handleTouchEnd);
       canvas.addEventListener("mousemove", handleMouseMove);
       canvas.addEventListener("touchmove", handleTouchMove);
     </script>
