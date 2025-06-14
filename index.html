@@ -11,38 +11,54 @@
       rel="stylesheet"
     />
     <style>
+      html,
+      body {
+        height: 100%; /* Garante que HTML e Body ocupam a altura total da viewport */
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box; /* Inclui padding e border no cálculo da largura/altura */
+      }
       body {
         font-family: "Inter", sans-serif;
         background-color: #1a202c; /* Fundo escuro */
         display: flex;
-        justify-content: center;
-        align-items: center;
+        flex-direction: column; /* Organiza os filhos em coluna */
+        justify-content: center; /* Centraliza verticalmente o gameContainer */
+        align-items: center; /* Centraliza horizontalmente o gameContainer */
         min-height: 100vh; /* Garante que o body ocupe a altura total da viewport */
-        margin: 0;
-        overflow: hidden; /* Evita barras de rolagem */
+        overflow: hidden; /* Evita barras de rolagem globais */
       }
+
       #gameContainer {
-        background-color: #2d3748; /* Fundo do jogo mais claro */
+        width: 100vw; /* Ocupa toda a largura da viewport */
+        height: 100vh; /* Ocupa toda a altura da viewport */
+        display: flex;
+        flex-direction: column; /* Organiza os filhos em coluna */
+        justify-content: space-between; /* Distribui os elementos com espaço entre eles */
+        align-items: center; /* Centraliza os elementos horizontalmente */
+        background-color: #2d3748; /* Fundo do container */
         border-radius: 1rem; /* Cantos arredondados */
         box-shadow: 0 0 20px rgba(0, 0, 0, 0.5); /* Sombra */
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 1rem;
-        max-width: 90vw; /* Largura máxima para mobile */
-        position: relative;
-        flex-grow: 1;
-        height: calc(100vh - 2rem); /* 2rem para um padding/margin vertical */
-        overflow-y: auto; /* Adicionado para permitir scroll se o conteúdo for muito grande em telas pequenas */
+        overflow: hidden; /* Evita barras de rolagem */
       }
+
+      #gameCanvas {
+        width: 90%; /* Ocupa 90% da largura do container */
+        height: 60%; /* Ocupa 60% da altura do container */
+        background-color: #3f51b5; /* Cor de fundo do canvas */
+        border-radius: 0.75rem; /* Cantos arredondados no canvas */
+        display: block;
+        touch-action: none; /* Previne o comportamento padrão do navegador em toque */
+      }
+
       canvas {
         background-color: #3f51b5; /* Cor de fundo do canvas (azul) */
         border-radius: 0.75rem; /* Cantos arredondados no canvas */
         display: block;
         touch-action: none; /* Previne o comportamento padrão do navegador em toque */
-        flex-grow: 1; /* Faz o canvas ocupar o espaço disponível */
-        width: 100%; /* Adapta a largura ao container */
-        /* A altura será definida dinamicamente no JS */
+        flex-shrink: 0; /* Impede que o canvas encolha para dar espaço a outros elementos */
+        /* Largura e altura serão definidas dinamicamente no JS */
       }
       #controls {
         display: flex;
@@ -52,30 +68,31 @@
       }
       #moleculeTracker {
         display: flex;
-        flex-wrap: wrap; /* Permite que os itens quebrem para a próxima linha */
+        flex-wrap: wrap;
         justify-content: center;
-        gap: 0.75rem; /* Espaçamento entre os itens */
+        gap: 0.75rem;
         margin-top: 1rem;
         width: 100%;
         padding: 0.5rem;
-        background-color: #1e293b; /* Fundo mais escuro para o tracker */
+        background-color: #1e293b;
         border-radius: 0.5rem;
+        flex-shrink: 0; /* Impede que o tracker encolha para dar espaço ao canvas */
       }
       .molecule-item {
         display: flex;
         align-items: center;
         padding: 0.5rem 0.75rem;
         border-radius: 0.5rem;
-        background-color: #4a5568; /* Fundo do item da molécula */
-        color: #e2e8f0; /* Cor do texto */
-        font-size: 0.875rem; /* Tamanho da fonte sm */
+        background-color: #4a5568;
+        color: #e2e8f0;
+        font-size: 0.875rem;
       }
       .molecule-item span {
         margin-right: 0.25rem;
         font-weight: bold;
       }
       .molecule-item .count {
-        color: #a7f3d0; /* Cor verde clara para o contador */
+        color: #a7f3d0;
       }
       .message-box {
         position: absolute;
@@ -88,7 +105,7 @@
         border-radius: 10px;
         text-align: center;
         z-index: 1000;
-        display: none; /* Hidden by default */
+        display: none;
       }
       .message-box button {
         background-color: #4caf50;
@@ -100,21 +117,20 @@
         margin-top: 10px;
       }
 
-      /* Estilos para a curiosidade Gemini e indicador de carregamento */
       #factDisplay {
         position: absolute;
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background-color: rgba(0, 0, 0, 0.85); /* Fundo semi-transparente */
+        background-color: rgba(0, 0, 0, 0.85);
         color: white;
         padding: 1.5rem;
         border-radius: 1rem;
         box-shadow: 0 0 25px rgba(0, 0, 0, 0.7);
         z-index: 1000;
         text-align: center;
-        max-width: 80%; /* Para mobile */
-        transition: opacity 0.5s ease-in-out; /* Transição de opacidade */
+        max-width: 80%;
+        transition: opacity 0.5s ease-in-out;
       }
       #factTextContent {
         font-size: 1.1rem;
@@ -128,9 +144,9 @@
         background-color: rgba(0, 0, 0, 0.7);
         color: white;
         padding: 0.75rem 1.5rem;
-        border-radius: 9999px; /* Pill shape */
+        border-radius: 9999px;
         box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
-        z-index: 2000; /* Acima do factDisplay */
+        z-index: 2000;
       }
     </style>
   </head>
@@ -141,26 +157,22 @@
       <div id="controls">
         <!-- Futuros botões ou controles podem vir aqui -->
       </div>
-      <!-- Elemento para rastrear as moléculas formadas -->
       <div
         id="moleculeTracker"
         class="text-white text-sm mt-4 w-full flex flex-wrap justify-center gap-4"
       >
         <!-- Contadores de moléculas serão renderizados aqui dinamicamente -->
       </div>
-      <!-- Caixa de mensagem geral do jogo -->
       <div id="messageBox" class="message-box">
         <p id="messageText"></p>
         <button id="closeMessageButton">OK</button>
       </div>
 
-      <!-- NOVO: Elemento para exibir curiosidades Gemini -->
       <div id="factDisplay" class="hidden opacity-0">
         <p id="factTextContent"></p>
         <p class="text-sm mt-1 text-gray-400">✨ Curiosidade da Molécula ✨</p>
       </div>
 
-      <!-- NOVO: Indicador de carregamento Gemini -->
       <div id="loadingIndicator" class="hidden">A carregar...</div>
     </div>
 
@@ -172,9 +184,9 @@
       const messageText = document.getElementById("messageText");
       const closeMessageButton = document.getElementById("closeMessageButton");
       const moleculeTrackerDiv = document.getElementById("moleculeTracker");
-      const factDisplayDiv = document.getElementById("factDisplay"); // Novo elemento
-      const factTextContent = document.getElementById("factTextContent"); // Novo elemento
-      const loadingIndicator = document.getElementById("loadingIndicator"); // Novo elemento
+      const factDisplayDiv = document.getElementById("factDisplay");
+      const factTextContent = document.getElementById("factTextContent");
+      const loadingIndicator = document.getElementById("loadingIndicator");
 
       let elements = [];
       let shooterElement = null;
@@ -185,29 +197,30 @@
       let activeAnimations = [];
       let isAnimating = false;
 
-      // Variáveis para a linha de mira
       let aimTargetX = 0;
       let aimTargetY = 0;
 
-      const ELEMENT_RADIUS = 25;
+      // Fator de escala para o raio dos elementos (quão grande eles são em relação à menor dimensão da viewport)
+      const ELEMENT_VIEWPORT_SCALE_FACTOR = 50; // Por exemplo, 12 elementos caberiam no lado mais curto se fossem 100% de diâmetro
+      let ELEMENT_RADIUS; // Calculado dinamicamente
+
       const INITIAL_ROWS = 4;
-      const GAME_PADDING = 20;
+      const GAME_PADDING_FACTOR = 0.8; // Fator para o padding proporcional ao raio do elemento (maior padding)
+      let GAME_PADDING; // Calculado dinamicamente
+
       const BOUNCE_FACTOR = 0.9;
 
-      // Gemini API Configuration (chave será injetada pelo ambiente Canvas)
       const GEMINI_API_KEY = "";
       const GEMINI_API_URL =
         "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
 
-      // Definição dos elementos químicos
       const chemicalElements = {
-        H: { color: "#ffffff", valence: 1 }, // Hidrogénio (Branco)
-        O: { color: "#ff0000", valence: 2 }, // Oxigénio (Vermelho)
-        C: { color: "#000000", valence: 4 }, // Carbono (Preto)
-        N: { color: "#0000ff", valence: 3 }, // Nitrogénio (Azul)
+        H: { color: "#ffffff", valence: 1 },
+        O: { color: "#ff0000", valence: 2 },
+        C: { color: "#000000", valence: 4 },
+        N: { color: "#0000ff", valence: 3 },
       };
 
-      // Definição das moléculas e seus componentes esperados
       const chemicalMolecules = {
         H2O: ["H", "H", "O"],
         O2: ["O", "O"],
@@ -216,46 +229,104 @@
         N2: ["N", "N"],
       };
 
-      // Redimensiona o canvas para preencher o gameContainer
+      // Redimensiona o canvas e calcula o ELEMENT_RADIUS dinamicamente
       function resizeCanvas() {
-        canvas.width = gameContainer.clientWidth - GAME_PADDING * 2;
+        // Calcula ELEMENT_RADIUS com base na menor dimensão da área disponível
+        ELEMENT_RADIUS =
+          Math.min(
+            gameContainer.clientWidth,
+            gameContainer.clientHeight * 0.6
+          ) / ELEMENT_VIEWPORT_SCALE_FACTOR;
 
-        const headerHeight = gameContainer.querySelector("h1").offsetHeight;
-        const controlsHeight =
-          gameContainer.querySelector("#controls").offsetHeight;
-        const moleculeTrackerHeight = moleculeTrackerDiv.offsetHeight;
-        const gameContainerPaddingY =
-          parseFloat(getComputedStyle(gameContainer).paddingTop) +
-          parseFloat(getComputedStyle(gameContainer).paddingBottom);
+        // Garante um tamanho mínimo e máximo razoável para os elementos
+        if (ELEMENT_RADIUS < 15) ELEMENT_RADIUS = 15; // Tamanho mínimo para visibilidade
+        if (ELEMENT_RADIUS > 40) ELEMENT_RADIUS = 40; // Tamanho máximo para evitar elementos muito grandes
 
-        const availableCanvasHeight =
-          gameContainer.clientHeight -
-          headerHeight -
-          controlsHeight -
-          moleculeTrackerHeight -
-          gameContainerPaddingY;
+        // Calcula o padding dinâmico (dependente do ELEMENT_RADIUS)
+        GAME_PADDING = ELEMENT_RADIUS * GAME_PADDING_FACTOR;
 
-        canvas.height = availableCanvasHeight > 0 ? availableCanvasHeight : 100;
+        // Define as dimensões do canvas para ocupar o espaço proporcional do gameContainer
+        canvas.width = gameContainer.clientWidth * 0.9; // 90% da largura do container
+        canvas.height = gameContainer.clientHeight * 0.6; // 60% da altura do container
 
-        if (elements.length === 0 && shooterElement === null) {
-          initializeGame();
-        } else {
+        // Reposiciona elementos existentes e o atirador
+        if (elements.length > 0) {
           repositionElements();
-          generateShooterElement(); // Garante que o atirador seja reposicionado após o redimensionamento
+        } else {
+          populateInitialElements();
         }
-      }
 
+        generateShooterElement(); // Sempre recalcula a posição do atirador
+      }
+      // function resizeCanvas() {
+      //   // Calcula ELEMENT_RADIUS com base na menor dimensão da viewport
+      //   // ELEMENT_VIEWPORT_SCALE_FACTOR define quantos diâmetros de elemento caberiam na menor dimensão
+      //   ELEMENT_RADIUS =
+      //     Math.min(window.innerWidth, window.innerHeight) /
+      //     ELEMENT_VIEWPORT_SCALE_FACTOR;
+
+      //   // Garante um tamanho mínimo e máximo razoável para os elementos
+      //   if (ELEMENT_RADIUS < 15) ELEMENT_RADIUS = 15; // Minimum size for visibility
+      //   if (ELEMENT_RADIUS > 40) ELEMENT_RADIUS = 40; // Maximum size to prevent elements from becoming too large
+
+      //   // Calcula o padding dinâmico (dependente do ELEMENT_RADIUS)
+      //   GAME_PADDING = ELEMENT_RADIUS * GAME_PADDING_FACTOR;
+
+      //   // Calcula a largura e altura do canvas com base nos elementos e paddings
+      //   // Assegura que todos os elementos e o atirador caibam
+      //   const elementsPerRowForCanvas = Math.floor(
+      //     (gameContainer.clientWidth - 2 * GAME_PADDING) /
+      //       (ELEMENT_RADIUS * 2.1)
+      //   );
+      //   const calculatedCanvasWidth =
+      //     elementsPerRowForCanvas * ELEMENT_RADIUS * 2.1 + 2 * GAME_PADDING;
+
+      //   // A altura do canvas deve acomodar INITIAL_ROWS de elementos + área do atirador + paddings
+      //   const calculatedCanvasHeight =
+      //     INITIAL_ROWS * ELEMENT_RADIUS * 2 * 0.866 +
+      //     ELEMENT_RADIUS * 4 +
+      //     2 * GAME_PADDING; // Adiciona espaço para o atirador
+
+      //   canvas.width = calculatedCanvasWidth;
+      //   canvas.height = calculatedCanvasHeight;
+
+      //   // Ajusta o gameContainer para envolver o canvas e os outros elementos, respeitando os limites da viewport
+      //   gameContainer.style.width = `${
+      //     canvas.width +
+      //     2 * parseFloat(getComputedStyle(gameContainer).paddingLeft)
+      //   }px`;
+      //   // A altura do gameContainer será gerida pelo flexbox do body e pelo conteúdo
+
+      //   // Reposiciona elementos existentes e o atirador.
+      //   if (elements.length > 0) {
+      //     // Se o jogo já estiver iniciado
+      //     repositionElements();
+      //   } else {
+      //     // Se for a primeira inicialização
+      //     populateInitialElements();
+      //   }
+      //   generateShooterElement(); // Sempre recalcula a posição do atirador
+      // }
+
+      // Reposiciona elementos existentes com base no novo ELEMENT_RADIUS e largura do canvas
       function repositionElements() {
-        const elementsPerRow = Math.floor(canvas.width / (ELEMENT_RADIUS * 2));
+        // Usar o ELEMENT_RADIUS para calcular o espaçamento.
+        const elementSpacing = ELEMENT_RADIUS * 2.05;
+        let elementsPerRow = Math.floor(canvas.width / elementSpacing);
+        if (elementsPerRow < 1) elementsPerRow = 1; // Garante pelo menos 1 elemento por linha
+
         const startX =
-          (canvas.width - elementsPerRow * ELEMENT_RADIUS * 2) / 2 +
-          ELEMENT_RADIUS;
+          (canvas.width - elementsPerRow * elementSpacing) / 2 + ELEMENT_RADIUS;
 
         elements.forEach((element) => {
           const row = element.row;
           const col = element.col;
-          element.x = startX + col * (ELEMENT_RADIUS * 2);
+          element.x =
+            startX +
+            col * elementSpacing +
+            (row % 2 === 0 ? 0 : ELEMENT_RADIUS);
           element.y = GAME_PADDING + row * (ELEMENT_RADIUS * 2 * 0.866);
+          element.radius = ELEMENT_RADIUS; // Atualiza o raio do elemento
         });
       }
 
@@ -268,7 +339,7 @@
           color: chemicalElements[randomKey].color,
           valence: chemicalElements[randomKey].valence,
           x: canvas.width / 2,
-          y: canvas.height - ELEMENT_RADIUS - 10,
+          y: canvas.height - ELEMENT_RADIUS - GAME_PADDING, // Ajuste a posição Y do atirador
           radius: ELEMENT_RADIUS,
         };
         aimTargetX = shooterElement.x;
@@ -278,13 +349,16 @@
       // Popula a parte superior do jogo com elementos iniciais
       function populateInitialElements() {
         elements = [];
-        const elementsPerRow = Math.floor(canvas.width / (ELEMENT_RADIUS * 2));
+        const elementSpacing = ELEMENT_RADIUS * 2.05;
+        let elementsPerRow = Math.floor(canvas.width / elementSpacing);
+        if (elementsPerRow < 1) elementsPerRow = 1; // Garante pelo menos 1 elemento por linha
+
         const startX =
-          (canvas.width - elementsPerRow * ELEMENT_RADIUS * 2) / 2 +
-          ELEMENT_RADIUS;
+          (canvas.width - elementsPerRow * elementSpacing) / 2 + ELEMENT_RADIUS;
 
         for (let r = 0; r < INITIAL_ROWS; r++) {
-          for (let c = 0; c < elementsPerRow - (r % 2); c++) {
+          const currentElementsPerRow = elementsPerRow - (r % 2);
+          for (let c = 0; c < currentElementsPerRow; c++) {
             const keys = Object.keys(chemicalElements);
             const randomKey = keys[Math.floor(Math.random() * keys.length)];
 
@@ -294,7 +368,7 @@
               valence: chemicalElements[randomKey].valence,
               x:
                 startX +
-                c * ELEMENT_RADIUS * 2 +
+                c * elementSpacing +
                 (r % 2 === 0 ? 0 : ELEMENT_RADIUS),
               y: GAME_PADDING + r * (ELEMENT_RADIUS * 2 * 0.866),
               radius: ELEMENT_RADIUS,
@@ -405,7 +479,7 @@
               ctx.closePath();
 
               ctx.fillStyle = "#eee";
-              ctx.font = `${el.radius * 0.8}px Inter`;
+              ctx.font = `bold ${el.radius * 0.8}px Inter`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
               ctx.fillText(el.symbol, el.currentX, el.currentY);
@@ -463,7 +537,7 @@
                   valence: chemicalElements[projectile.symbol].valence,
                   x: projectile.x,
                   y: projectile.y,
-                  radius: projectile.radius,
+                  radius: ELEMENT_RADIUS,
                   id: Date.now() + Math.random(),
                   attachedTo: element.id,
                 });
@@ -484,7 +558,7 @@
               valence: chemicalElements[projectile.symbol].valence,
               x: projectile.x,
               y: projectile.radius,
-              radius: projectile.radius,
+              radius: ELEMENT_RADIUS,
               id: Date.now() + Math.random(),
             });
             projectile = null;
@@ -509,7 +583,7 @@
         canShoot =
           projectile === null &&
           activeAnimations.length === 0 &&
-          !factDisplayDiv.classList.contains("opacity-100"); // Bloqueia o disparo se a curiosidade estiver visível
+          !factDisplayDiv.classList.contains("opacity-100");
 
         if (elements.length === 0 && canShoot) {
           showMessage("Você venceu! Todos os elementos foram eliminados!");
@@ -528,22 +602,17 @@
           const factShowStartTime = anim.startTime + totalAnimationDuration;
           const factHideTime = factShowStartTime + anim.factDisplayDuration;
 
-          // Fase de união e nome da molécula
           if (currentTime - anim.startTime < totalAnimationDuration) {
             animationsToKeep.push(anim);
-          }
-          // Tempo de pedir a curiosidade (depois da união, antes do nome desaparecer)
-          else if (
+          } else if (
             currentTime - anim.startTime >= anim.duration &&
             currentTime - anim.startTime < totalAnimationDuration &&
             !anim.factRequested
           ) {
             anim.factRequested = true;
             requestMoleculeFact(anim);
-            animationsToKeep.push(anim); // Manter a animação enquanto espera a curiosidade
-          }
-          // Tempo de exibir a curiosidade
-          else if (
+            animationsToKeep.push(anim);
+          } else if (
             anim.geminiFact &&
             currentTime - factShowStartTime >= 0 &&
             currentTime - factShowStartTime < anim.factDisplayDuration
@@ -552,17 +621,13 @@
               displayFact(anim.geminiFact);
             }
             animationsToKeep.push(anim);
-          }
-          // Animação completamente terminada (união + nome + curiosidade)
-          else if (anim.geminiFact && currentTime - factHideTime >= 0) {
+          } else if (anim.geminiFact && currentTime - factHideTime >= 0) {
             elements = elements.filter(
               (el) => !anim.originalElementIds.includes(el.id)
             );
             shouldCheckForNewMoleculesAfterAnimation = true;
-            hideFact(); // Garante que a curiosidade seja escondida
-          }
-          // Animação completamente terminada SEM curiosidade (caso a API falhe ou não seja solicitada)
-          else if (
+            hideFact();
+          } else if (
             !anim.geminiFact &&
             currentTime - anim.startTime >= totalAnimationDuration
           ) {
@@ -571,7 +636,7 @@
             );
             shouldCheckForNewMoleculesAfterAnimation = true;
           } else {
-            animationsToKeep.push(anim); // Mantém as outras animações na fila
+            animationsToKeep.push(anim);
           }
         }
 
@@ -579,12 +644,12 @@
 
         if (shouldCheckForNewMoleculesAfterAnimation) {
           dropOrphanElements();
-          checkForMolecules(); // Tenta encontrar a próxima molécula na cadeia
+          checkForMolecules();
         }
 
         isAnimating =
           activeAnimations.length > 0 ||
-          factDisplayDiv.classList.contains("opacity-100"); // isAnimating agora também considera a curiosidade
+          factDisplayDiv.classList.contains("opacity-100");
       }
 
       // Função para chamar a API Gemini e obter a curiosidade
@@ -595,7 +660,7 @@
           return;
         }
 
-        loadingIndicator.classList.remove("hidden"); // Mostrar indicador de carregamento
+        loadingIndicator.classList.remove("hidden");
 
         const prompt = `Forneça uma curiosidade curta e interessante (1-2 frases) sobre a molécula ${animObject.molName}.`;
         let chatHistory = [{ role: "user", parts: [{ text: prompt }] }];
@@ -620,8 +685,8 @@
             result.candidates[0].content.parts.length > 0
           ) {
             const fact = result.candidates[0].content.parts[0].text;
-            animObject.geminiFact = fact; // Armazena a curiosidade no objeto da animação
-            animObject.factDisplayStartTime = Date.now(); // Marca o início da exibição da curiosidade
+            animObject.geminiFact = fact;
+            animObject.factDisplayStartTime = Date.now();
           } else {
             animObject.geminiFact = `Não foi possível obter uma curiosidade sobre ${animObject.molName}.`;
             console.error("Resposta inesperada da API Gemini:", result);
@@ -630,7 +695,7 @@
           console.error("Erro ao chamar a API Gemini:", error);
           animObject.geminiFact = `Erro ao carregar curiosidade para ${animObject.molName}.`;
         } finally {
-          loadingIndicator.classList.add("hidden"); // Esconder indicador de carregamento
+          loadingIndicator.classList.add("hidden");
         }
       }
 
@@ -666,9 +731,6 @@
 
       // Verifica e remove moléculas
       function checkForMolecules() {
-        // Se já houver animações ativas na fila, não vamos procurar mais agora.
-        // A própria função `processAnimations` chamará `checkForMolecules` novamente
-        // quando uma animação terminar, criando a reação em cadeia.
         if (activeAnimations.length > 0) {
           return;
         }
@@ -753,7 +815,7 @@
                   } else {
                     moleculeCounts[molName] = 1;
                   }
-                  updateMoleculeTrackerDisplay(); // CHAVE: Atualiza o display do contador aqui!
+                  updateMoleculeTrackerDisplay();
 
                   potentialMolecule.forEach((el) =>
                     elementsInQueuedAnimations.add(el.id)
@@ -859,7 +921,7 @@
           valence: shooterElement.valence,
           x: shooterElement.x,
           y: shooterElement.y,
-          radius: shooterElement.radius,
+          radius: ELEMENT_RADIUS,
           vx: speed * Math.cos(clampedAngle),
           vy: speed * Math.sin(clampedAngle),
         };
@@ -938,13 +1000,17 @@
 
       // Inicializa o jogo
       function initializeGame() {
-        populateInitialElements();
-        generateShooterElement();
+        // Garante que o ELEMENT_RADIUS seja calculado antes de popular elementos
+        resizeCanvas(); // Esta chamada define o ELEMENT_RADIUS inicial e largura/altura do canvas
+
+        populateInitialElements(); // Agora ELEMENTS_RADIUS já está definido
+        generateShooterElement(); // E para o atirador também
+
         canShoot = true;
         projectile = null;
         messageBox.style.display = "none";
         activeAnimations = [];
-        hideFact(); // Garante que a curiosidade esteja escondida ao iniciar o jogo
+        hideFact();
 
         for (const molName in chemicalMolecules) {
           moleculeCounts[molName] = 0;
@@ -953,10 +1019,9 @@
       }
 
       // Event Listeners
-      window.addEventListener("resize", resizeCanvas);
+      window.addEventListener("resize", resizeCanvas); // Adiciona listener para redimensionamento
       window.onload = function () {
-        resizeCanvas();
-        initializeGame();
+        initializeGame(); // Chamada única para iniciar o jogo
         gameLoop();
       };
       canvas.addEventListener("mousedown", handleMouseDown);
