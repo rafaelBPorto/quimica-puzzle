@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Jogo de Química 2D</title>
+    <!-- Incluindo Tailwind CSS para facilitar o estilo base -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #1a202c; /* Fundo escuro */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+        overflow: hidden; /* Evita barras de rolagem */
+      }
+      #gameContainer {
+        background-color: #2d3748; /* Fundo do jogo mais claro */
+        border-radius: 1rem; /* Cantos arredondados */
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.5); /* Sombra */
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 1rem;
+        max-width: 90vw; /* Largura máxima para mobile */
+        max-height: 95vh; /* Altura máxima para mobile */
+        aspect-ratio: 9/16; /* Proporção de tela vertical (celular) */
+        position: relative;
+        overflow: hidden;
+      }
+      canvas {
+        background-color: #3f51b5; /* Cor de fundo do canvas (azul) */
+        border-radius: 0.75rem; /* Cantos arredondados no canvas */
+        display: block;
+        touch-action: none; /* Previne o comportamento padrão do navegador em toque */
+        flex-grow: 1; /* Faz o canvas ocupar o espaço disponível */
+        width: 100%; /* Adapta a largura ao container */
+        height: 100%; /* Adapta a altura ao container */
+      }
+      #controls {
+        display: flex;
+        justify-content: center;
+        padding: 1rem 0;
+        width: 100%;
+      }
+      #moleculeTracker {
+        display: flex;
+        flex-wrap: wrap; /* Permite que os itens quebrem para a próxima linha */
+        justify-content: center;
+        gap: 0.75rem; /* Espaçamento entre os itens */
+        margin-top: 1rem;
+        width: 100%;
+        padding: 0.5rem;
+        background-color: #1e293b; /* Fundo mais escuro para o tracker */
+        border-radius: 0.5rem;
+      }
+      .molecule-item {
+        display: flex;
+        align-items: center;
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        background-color: #4a5568; /* Fundo do item da molécula */
+        color: #e2e8f0; /* Cor do texto */
+        font-size: 0.875rem; /* Tamanho da fonte sm */
+      }
+      .molecule-item span {
+        margin-right: 0.25rem;
+        font-weight: bold;
+      }
+      .molecule-item .count {
+        color: #a7f3d0; /* Cor verde clara para o contador */
+      }
+      .message-box {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background-color: rgba(0, 0, 0, 0.8);
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+        text-align: center;
+        z-index: 1000;
+        display: none; /* Hidden by default */
+      }
+      .message-box button {
+        background-color: #4caf50;
+        color: white;
+        padding: 10px 20px;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="gameContainer" class="flex flex-col items-center justify-center">
+      <h1 class="text-white text-2xl font-bold mb-4">Química Puzzle</h1>
+      <canvas id="gameCanvas"></canvas>
+      <div id="controls">
+        <!-- Futuros botões ou controles podem vir aqui -->
+      </div>
+      <!-- Novo elemento para rastrear as moléculas formadas -->
+      <div
+        id="moleculeTracker"
+        class="text-white text-sm mt-4 w-full flex flex-wrap justify-center gap-4"
+      >
+        <!-- Contadores de moléculas serão renderizados aqui dinamicamente -->
+      </div>
+      <div id="messageBox" class="message-box">
+        <p id="messageText"></p>
+        <button id="closeMessageButton">OK</button>
+      </div>
+    </div>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+      const gameContainer = document.getElementById("gameContainer");
+      const messageBox = document.getElementById("messageBox");
+      const messageText = document.getElementById("messageText");
+      const closeMessageButton = document.getElementById("closeMessageButton");
+      const moleculeTrackerDiv = document.getElementById("moleculeTracker");
+
+      let elements = []; // Elementos na parte superior da tela (estáticos ou em animação)
+      let shooterElement = null; // Elemento para ser atirado
+      let projectile = null; // Elemento em voo
+      let canShoot = true; // Controla se pode atirar novamente
+      let moleculeCounts = {}; // Armazena a contagem de cada molécula
+
+      let activeAnimations = []; // Array para guardar as animações em curso
+      let isAnimating = false; // Flag para bloquear o disparo durante animações
+
+      // Variáveis para a linha de mira
+      let aimTargetX = 0;
+      let aimTargetY = 0;
+
+      const ELEMENT_RADIUS = 25;
+      const INITIAL_ROWS = 4;
+      const GAME_PADDING = 20;
+      const BOUNCE_FACTOR = 0.9;
+
+      // Definição dos elementos químicos
+      const chemicalElements = {
+        H: { color: "#ffffff", valence: 1 }, // Hidrogénio (Branco)
+        O: { color: "#ff0000", valence: 2 }, // Oxigénio (Vermelho)
+        C: { color: "#000000", valence: 4 }, // Carbono (Preto)
+        N: { color: "#0000ff", valence: 3 }, // Nitrogénio (Azul)
+      };
+
+      // Definição das moléculas e seus componentes esperados
+      const chemicalMolecules = {
+        H2O: ["H", "H", "O"],
+        O2: ["O", "O"],
+        CO2: ["C", "O", "O"],
+        CH4: ["C", "H", "H", "H", "H"],
+        N2: ["N", "N"],
+      };
+
+      // Redimensiona o canvas para preencher o gameContainer
+      function resizeCanvas() {
+        canvas.width = gameContainer.clientWidth - GAME_PADDING * 2;
+        const headerHeight = gameContainer.querySelector("h1").offsetHeight;
+        const controlsHeight =
+          gameContainer.querySelector("#controls").offsetHeight;
+        const moleculeTrackerHeight = moleculeTrackerDiv.offsetHeight;
+        const totalUIHeight =
+          headerHeight +
+          controlsHeight +
+          moleculeTrackerHeight +
+          GAME_PADDING * 2;
+
+        canvas.height = gameContainer.clientHeight - totalUIHeight;
+
+        if (canvas.width < 100) canvas.width = 100;
+        if (canvas.height < 100) canvas.height = 100;
+
+        if (elements.length === 0 && shooterElement === null) {
+          initializeGame();
+        } else if (elements.length > 0) {
+          repositionElements();
+        }
+      }
+
+      function repositionElements() {
+        const elementsPerRow = Math.floor(canvas.width / (ELEMENT_RADIUS * 2));
+        const startX =
+          (canvas.width - elementsPerRow * ELEMENT_RADIUS * 2) / 2 +
+          ELEMENT_RADIUS;
+
+        elements.forEach((element) => {
+          const row = element.row;
+          const col = element.col.replace(";", ""); // Remover ponto e vírgula extra se houver
+          element.x = startX + col * (ELEMENT_RADIUS * 2);
+          element.y = GAME_PADDING + row * (ELEMENT_RADIUS * 2 * 0.866);
+        });
+      }
+
+      // Gera um novo elemento aleatório para o atirador
+      function generateShooterElement() {
+        const keys = Object.keys(chemicalElements);
+        const randomKey = keys[Math.floor(Math.random() * keys.length)];
+        shooterElement = {
+          symbol: randomKey,
+          color: chemicalElements[randomKey].color,
+          valence: chemicalElements[randomKey].valence,
+          x: canvas.width / 2,
+          y: canvas.height - ELEMENT_RADIUS - 10,
+          radius: ELEMENT_RADIUS,
+        };
+        aimTargetX = shooterElement.x;
+        aimTargetY = shooterElement.y - 100;
+      }
+
+      // Popula a parte superior do jogo com elementos iniciais
+      function populateInitialElements() {
+        elements = [];
+        const elementsPerRow = Math.floor(canvas.width / (ELEMENT_RADIUS * 2));
+        const startX =
+          (canvas.width - elementsPerRow * ELEMENT_RADIUS * 2) / 2 +
+          ELEMENT_RADIUS;
+
+        for (let r = 0; r < INITIAL_ROWS; r++) {
+          for (let c = 0; c < elementsPerRow - (r % 2); c++) {
+            const keys = Object.keys(chemicalElements);
+            const randomKey = keys[Math.floor(Math.random() * keys.length)];
+
+            elements.push({
+              symbol: randomKey,
+              color: chemicalElements[randomKey].color,
+              valence: chemicalElements[randomKey].valence,
+              x:
+                startX +
+                c * ELEMENT_RADIUS * 2 +
+                (r % 2 === 0 ? 0 : ELEMENT_RADIUS),
+              y: GAME_PADDING + r * (ELEMENT_RADIUS * 2 * 0.866),
+              radius: ELEMENT_RADIUS,
+              row: r,
+              col: c,
+              id: Date.now() + Math.random(),
+            });
+          }
+        }
+      }
+
+      // Desenha um elemento no canvas
+      function drawElement(element) {
+        ctx.beginPath();
+        ctx.arc(element.x, element.y, element.radius, 0, Math.PI * 2);
+        ctx.fillStyle = element.color;
+        ctx.fill();
+        ctx.strokeStyle = "#333";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.closePath();
+
+        ctx.fillStyle = "#eee";
+        ctx.font = `${element.radius * 0.8}px Inter`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(element.symbol, element.x, element.y);
+      }
+
+      // Desenha o jogo (incluindo elementos estáticos, atirador, projétil e linha de mira)
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Desenha elementos que NÃO fazem parte de uma animação ativa
+        const animatingElementIds = new Set();
+        activeAnimations.forEach((anim) => {
+          anim.originalElementIds.forEach((id) => animatingElementIds.add(id));
+        });
+
+        elements.forEach((element) => {
+          if (!animatingElementIds.has(element.id)) {
+            drawElement(element); // Desenha elementos estáticos
+          }
+        });
+
+        if (shooterElement) {
+          drawElement(shooterElement);
+        }
+
+        // Desenha a linha de mira (apenas se puder atirar e não houver animação)
+        if (canShoot && shooterElement && !isAnimating) {
+          ctx.beginPath();
+          ctx.setLineDash([5, 5]);
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+          ctx.lineWidth = 2;
+
+          const dx = aimTargetX - shooterElement.x;
+          const dy = aimTargetY - shooterElement.y;
+          let angle = Math.atan2(dy, dx);
+
+          const maxAngle = -Math.PI * 0.1;
+          const minAngle = -Math.PI * 0.9;
+          angle = Math.max(minAngle, Math.min(maxAngle, angle));
+
+          const lineLength = Math.max(canvas.width, canvas.height) * 2;
+          const endX = shooterElement.x + lineLength * Math.cos(angle);
+          const endY = shooterElement.y + lineLength * Math.sin(angle);
+
+          ctx.moveTo(shooterElement.x, shooterElement.y);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.closePath();
+        }
+
+        // Desenha o projétil em voo
+        if (projectile) {
+          drawElement(projectile);
+        }
+
+        // Desenha as animações ativas (elementos a unir-se, nome da molécula)
+        drawActiveAnimations();
+      }
+
+      // Desenha as animações em curso
+      function drawActiveAnimations() {
+        activeAnimations.forEach((anim) => {
+          const currentTime = Date.now();
+          const phaseOneDuration = anim.duration; // Fase de união
+          const phaseTwoDuration = anim.showNameDuration; // Fase de mostrar o nome
+
+          const progressPhaseOne =
+            (currentTime - anim.startTime) / phaseOneDuration;
+          const progressPhaseTwo =
+            (currentTime - (anim.startTime + phaseOneDuration)) /
+            phaseTwoDuration;
+
+          if (progressPhaseOne < 1) {
+            // Fase 1: Elementos a unirem-se
+            anim.animatedElements.forEach((el) => {
+              // Interpola a posição do inicial para o alvo
+              el.currentX =
+                el.initialX + (anim.targetX - el.initialX) * progressPhaseOne;
+              el.currentY =
+                el.initialY + (anim.targetY - el.initialY) * progressPhaseOne;
+
+              // Desenha o elemento animado
+              ctx.beginPath();
+              ctx.arc(el.currentX, el.currentY, el.radius, 0, Math.PI * 2);
+              ctx.fillStyle = el.color;
+              ctx.fill();
+              ctx.strokeStyle = "#333";
+              ctx.lineWidth = 2;
+              ctx.stroke();
+              ctx.closePath();
+
+              ctx.fillStyle = "#eee";
+              ctx.font = `${el.radius * 0.8}px Inter`;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(el.symbol, el.currentX, el.currentY);
+            });
+          }
+
+          // Fase 2: Mostra o nome da molécula (começa após a união, desaparece)
+          if (progressPhaseOne >= 1 && progressPhaseTwo < 1) {
+            const fadeAlpha = 1 - progressPhaseTwo; // Desaparece de 1 para 0
+            if (fadeAlpha > 0) {
+              ctx.fillStyle = "rgba(255, 255, 255, " + fadeAlpha + ")";
+              ctx.font = "bold 30px Inter";
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(anim.molName, anim.targetX, anim.targetY);
+            }
+          }
+        });
+      }
+
+      // Atualiza a lógica do jogo
+      function update() {
+        // Mover e verificar colisões do projétil
+        if (projectile) {
+          projectile.x += projectile.vx;
+          projectile.y += projectile.vy;
+
+          // Lógica de Ricochete
+          if (
+            projectile.x + projectile.radius > canvas.width ||
+            projectile.x - projectile.radius < 0
+          ) {
+            projectile.vx *= -BOUNCE_FACTOR;
+            if (projectile.x + projectile.radius > canvas.width) {
+              projectile.x = canvas.width - projectile.radius;
+            } else if (projectile.x - projectile.radius < 0) {
+              projectile.x = projectile.radius;
+            }
+          }
+          if (projectile.y - projectile.radius < 0) {
+            projectile.vy *= -BOUNCE_FACTOR;
+            projectile.y = projectile.radius;
+          }
+
+          // Verificar colisão com os elementos fixos (apenas se não houver animação em curso)
+          let hit = false;
+          if (!isAnimating) {
+            for (let i = 0; i < elements.length; i++) {
+              const element = elements[i];
+              const dx = projectile.x - element.x;
+              const dy = projectile.y - element.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+
+              if (distance < projectile.radius + element.radius) {
+                hit = true;
+                // Adicionar o projétil como um novo elemento fixo
+                elements.push({
+                  symbol: projectile.symbol,
+                  color: projectile.color,
+                  valence: chemicalElements[projectile.symbol].valence,
+                  x: projectile.x,
+                  y: projectile.y,
+                  radius: projectile.radius,
+                  id: Date.now() + Math.random(),
+                  attachedTo: element.id,
+                });
+                projectile = null;
+                canShoot = false; // Bloqueia disparo até animações terminarem
+                generateShooterElement();
+
+                checkForMolecules(); // Inicia a verificação de moléculas e a fila de animação
+                break;
+              }
+            }
+          }
+
+          // Se o projétil atingiu o topo e não há elementos, fixa-o no topo (se não estiver animando)
+          if (!hit && projectile.y - projectile.radius <= 0 && !isAnimating) {
+            elements.push({
+              symbol: projectile.symbol,
+              color: projectile.color,
+              valence: chemicalElements[projectile.symbol].valence,
+              x: projectile.x,
+              y: projectile.radius,
+              radius: projectile.radius,
+              id: Date.now() + Math.random(),
+            });
+            projectile = null;
+            canShoot = false; // Bloqueia disparo
+            generateShooterElement();
+            checkForMolecules(); // Inicia verificação de moléculas
+          }
+
+          // Se o projétil saiu da tela por baixo (se houver ricochete, menos provável)
+          if (
+            projectile &&
+            projectile.y > canvas.height + projectile.radius &&
+            !isAnimating
+          ) {
+            projectile = null;
+            canShoot = true;
+            generateShooterElement();
+          }
+        }
+
+        // Processa as animações ativas a cada frame
+        processAnimations();
+
+        // Só permite atirar se não houver projétil e nenhuma animação ativa
+        canShoot = projectile === null && activeAnimations.length === 0;
+
+        // Verifica condição de vitória/derrota
+        if (elements.length === 0 && canShoot) {
+          showMessage("Você venceu! Todos os elementos foram eliminados!");
+        }
+        // Adicionar condição de derrota aqui, se desejar (ex: elementos atingem uma linha inferior)
+      }
+
+      // Processa as animações em curso
+      function processAnimations() {
+        const currentTime = Date.now();
+        let animationsToKeep = [];
+        let shouldCheckForNewMoleculesAfterAnimation = false;
+
+        activeAnimations.forEach((anim) => {
+          const totalAnimationDuration = anim.duration + anim.showNameDuration;
+
+          if (currentTime - anim.startTime >= totalAnimationDuration) {
+            // Animação completamente terminada (união + mostrar nome)
+            // Remover os elementos originais do array principal 'elements'
+            elements = elements.filter(
+              (el) => !anim.originalElementIds.includes(el.id)
+            );
+            shouldCheckForNewMoleculesAfterAnimation = true; // Sinaliza para verificar efeitos em cascata
+          } else {
+            // Animação ainda em curso, mantém-na
+            animationsToKeep.push(anim);
+          }
+        });
+
+        activeAnimations = animationsToKeep; // Atualiza a lista de animações ativas
+
+        if (shouldCheckForNewMoleculesAfterAnimation) {
+          dropOrphanElements(); // Faz com que os elementos soltos caiam
+          checkForMolecules(); // Isso é a chamada em cascata para novas formações
+          updateMoleculeTrackerDisplay(); // Atualiza o display após potenciais mudanças
+        }
+
+        // A flag isAnimating é verdadeira se houver animações ativas
+        isAnimating = activeAnimations.length > 0;
+      }
+
+      // Exibe uma caixa de mensagem
+      function showMessage(msg) {
+        messageText.textContent = msg;
+        messageBox.style.display = "block";
+      }
+
+      // Esconde a caixa de mensagem e reinicia o jogo
+      closeMessageButton.addEventListener("click", () => {
+        messageBox.style.display = "none";
+        initializeGame(); // Reinicia o jogo
+      });
+
+      // Verifica e remove moléculas
+      function checkForMolecules() {
+        // Se já houver animações ativas na fila, não vamos procurar mais agora.
+        // A própria função `processAnimations` chamará `checkForMolecules` novamente
+        // quando uma animação terminar, criando a reação em cadeia.
+        if (activeAnimations.length > 0) {
+          return;
+        }
+
+        // Criar um conjunto temporário de IDs de elementos que estão atualmente envolvidos
+        // em animações na fila, para não tentarmos formar novas moléculas com eles.
+        const elementsInQueuedAnimations = new Set();
+        activeAnimations.forEach((anim) => {
+          anim.originalElementIds.forEach((id) =>
+            elementsInQueuedAnimations.add(id)
+          );
+        });
+
+        // Percorre o array 'elements' atual para encontrar uma molécula
+        for (const molName in chemicalMolecules) {
+          const requiredSymbols = chemicalMolecules[molName];
+
+          for (let i = 0; i < elements.length; i++) {
+            const currentElement = elements[i];
+
+            // Pular elementos que já estão envolvidos numa animação em fila
+            if (elementsInQueuedAnimations.has(currentElement.id)) {
+              continue;
+            }
+
+            let potentialMolecule = [currentElement];
+            let remainingSymbols = [...requiredSymbols];
+            const currentIndex = remainingSymbols.indexOf(
+              currentElement.symbol
+            );
+
+            if (currentIndex > -1) {
+              remainingSymbols.splice(currentIndex, 1);
+            } else {
+              continue;
+            }
+
+            // Encontrar outros elementos para a molécula
+            const candidateElements = elements.filter(
+              (el) =>
+                !potentialMolecule.includes(el) &&
+                !elementsInQueuedAnimations.has(el.id)
+            );
+
+            for (let j = 0; j < candidateElements.length; j++) {
+              const otherElement = candidateElements[j];
+              const dx = currentElement.x - otherElement.x;
+              const dy = currentElement.y - otherElement.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+
+              if (
+                distance < ELEMENT_RADIUS * 2.5 &&
+                remainingSymbols.includes(otherElement.symbol)
+              ) {
+                potentialMolecule.push(otherElement);
+                const otherIndex = remainingSymbols.indexOf(
+                  otherElement.symbol
+                );
+                remainingSymbols.splice(otherIndex, 1);
+
+                if (remainingSymbols.length === 0) {
+                  // Molécula encontrada! Adiciona uma animação para ela à fila.
+                  const center = calculateCenter(potentialMolecule);
+                  activeAnimations.push({
+                    type: "moleculeForm",
+                    // Copia os elementos e suas posições iniciais para a animação
+                    animatedElements: potentialMolecule.map((el) => ({
+                      ...el,
+                      currentX: el.x,
+                      currentY: el.y,
+                      initialX: el.x,
+                      initialY: el.y,
+                    })),
+                    originalElementIds: potentialMolecule.map((el) => el.id), // Guarda os IDs originais para remoção posterior
+                    targetX: center.x,
+                    targetY: center.y,
+                    molName: molName,
+                    startTime: Date.now(),
+                    duration: 300, // Duração da fase de união (ms)
+                    showNameDuration: 700, // Duração da fase de exibição do nome (ms)
+                  });
+
+                  // Incrementar a contagem da molécula imediatamente
+                  if (moleculeCounts.hasOwnProperty(molName)) {
+                    moleculeCounts[molName]++;
+                  } else {
+                    moleculeCounts[molName] = 1;
+                  }
+
+                  // Adicionar os IDs dos elementos desta animação recém-enfileirada ao conjunto
+                  // para evitar que sejam reavaliados para outras moléculas nesta mesma chamada de `checkForMolecules`.
+                  potentialMolecule.forEach((el) =>
+                    elementsInQueuedAnimations.add(el.id)
+                  );
+
+                  isAnimating = true; // Sinaliza que a animação está ativa
+
+                  // Retorna para processar uma animação de cada vez, permitindo a reação em cadeia sequencial
+                  return;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Helper para calcular o centro de um grupo de elementos
+      function calculateCenter(elementsArray) {
+        let sumX = 0;
+        let sumY = 0;
+        elementsArray.forEach((el) => {
+          sumX += el.x;
+          sumY += el.y;
+        });
+        return {
+          x: sumX / elementsArray.length,
+          y: sumY / elementsArray.length,
+        };
+      }
+
+      // Função para atualizar o display do rastreador de moléculas
+      function updateMoleculeTrackerDisplay() {
+        moleculeTrackerDiv.innerHTML = ""; // Limpa o conteúdo anterior
+
+        for (const molName in chemicalMolecules) {
+          // Percorre todas as moléculas definidas
+          const molDiv = document.createElement("div");
+          molDiv.className = "molecule-item"; // Classe para estilização
+          molDiv.innerHTML = `
+                    <span>${molName}</span>
+                    <span class="count">${
+                      moleculeCounts[molName] !== undefined
+                        ? moleculeCounts[molName]
+                        : 0
+                    }</span>
+                `;
+          moleculeTrackerDiv.appendChild(molDiv);
+        }
+      }
+
+      // Verifica se há elementos que não estão conectados a nada e devem cair
+      function dropOrphanElements() {
+        if (elements.length === 0) return;
+
+        const connectedElements = new Set();
+        const queue = [];
+
+        // Adiciona todos os elementos na primeira linha (topo) que ainda existem para a fila
+        elements
+          .filter((el) => el.y <= GAME_PADDING + ELEMENT_RADIUS + 10)
+          .forEach((el) => {
+            queue.push(el);
+            connectedElements.add(el.id);
+          });
+
+        let head = 0;
+        while (head < queue.length) {
+          const current = queue[head++];
+          // Encontra vizinhos do elemento atual
+          elements.forEach((neighbor) => {
+            if (!connectedElements.has(neighbor.id)) {
+              const dx = current.x - neighbor.x;
+              const dy = current.y - neighbor.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              if (distance < ELEMENT_RADIUS * 2.1) {
+                connectedElements.add(neighbor.id);
+                queue.push(neighbor);
+              }
+            }
+          });
+        }
+
+        // Filtra para manter apenas os elementos conectados
+        const initialCount = elements.length;
+        elements = elements.filter((el) => connectedElements.has(el.id));
+
+        if (elements.length < initialCount) {
+          // Animação de queda ou efeito de pontuação pode ser adicionado aqui
+        }
+      }
+
+      // NOVA: Função que de fato lança o projétil
+      function launchProjectile(inputX, inputY) {
+        // Só permite o disparo se puder atirar e não houver animação
+        if (!canShoot || !shooterElement || isAnimating) return;
+
+        // Calcular a direção do projétil
+        const dx = inputX - shooterElement.x;
+        const dy = inputY - shooterElement.y;
+        const angle = Math.atan2(dy, dx);
+
+        const maxAngle = -Math.PI * 0.1;
+        const minAngle = -Math.PI * 0.9;
+        const clampedAngle = Math.max(minAngle, Math.min(maxAngle, angle));
+
+        const speed = 10; // Velocidade do projétil
+
+        projectile = {
+          symbol: shooterElement.symbol,
+          color: shooterElement.color,
+          valence: shooterElement.valence,
+          x: shooterElement.x,
+          y: shooterElement.y,
+          radius: shooterElement.radius,
+          vx: speed * Math.cos(clampedAngle),
+          vy: speed * Math.sin(clampedAngle),
+        };
+
+        canShoot = false; // Desativa o disparo
+      }
+
+      // NOVA: Lida com o pressionar do botão do rato (apenas mira, não dispara)
+      function handleMouseDown(event) {
+        if (canShoot && shooterElement && !isAnimating) {
+          const rect = canvas.getBoundingClientRect();
+          aimTargetX = event.clientX - rect.left;
+          aimTargetY = event.clientY - rect.top;
+        }
+      }
+
+      // NOVA: Lida com o soltar do botão do rato (dispara)
+      function handleMouseUp(event) {
+        if (canShoot && shooterElement && !isAnimating) {
+          // Usa a posição atual da mira para lançar
+          launchProjectile(aimTargetX, aimTargetY);
+        }
+      }
+
+      // NOVA: Lida com o início do toque (apenas mira, não dispara)
+      function handleTouchStart(event) {
+        if (
+          canShoot &&
+          shooterElement &&
+          !isAnimating &&
+          event.touches.length > 0
+        ) {
+          const rect = canvas.getBoundingClientRect();
+          aimTargetX = event.touches[0].clientX - rect.left;
+          aimTargetY = event.touches[0].clientY - rect.top;
+          event.preventDefault(); // Previne o comportamento padrão do navegador (ex: scroll)
+        }
+      }
+
+      // Lida com o movimento do rato (mira)
+      function handleMouseMove(event) {
+        if (canShoot && shooterElement && !isAnimating) {
+          const rect = canvas.getBoundingClientRect();
+          aimTargetX = event.clientX - rect.left;
+          aimTargetY = event.clientY - rect.top;
+        }
+      }
+
+      // Lida com o movimento do toque (mira)
+      function handleTouchMove(event) {
+        if (
+          canShoot &&
+          shooterElement &&
+          event.touches.length > 0 &&
+          !isAnimating
+        ) {
+          const rect = canvas.getBoundingClientRect();
+          aimTargetX = event.touches[0].clientX - rect.left;
+          aimTargetY = event.touches[0].clientY - rect.top;
+          event.preventDefault();
+        }
+      }
+
+      // NOVA: Lida com o fim do toque (dispara)
+      function handleTouchEnd(event) {
+        if (canShoot && shooterElement && !isAnimating) {
+          // Usa a última posição da mira para lançar (que foi atualizada por touchmove)
+          launchProjectile(aimTargetX, aimTargetY);
+        }
+      }
+
+      // Loop principal do jogo
+      function gameLoop() {
+        update();
+        draw();
+        requestAnimationFrame(gameLoop);
+      }
+
+      // Inicializa o jogo
+      function initializeGame() {
+        populateInitialElements();
+        generateShooterElement();
+        canShoot = true;
+        projectile = null;
+        messageBox.style.display = "none";
+        activeAnimations = []; // Limpa animações pendentes
+
+        // Inicializa a contagem de moléculas
+        for (const molName in chemicalMolecules) {
+          moleculeCounts[molName] = 0;
+        }
+        updateMoleculeTrackerDisplay();
+      }
+
+      // Event Listeners
+      window.addEventListener("resize", resizeCanvas);
+      window.onload = function () {
+        resizeCanvas();
+        initializeGame();
+        gameLoop();
+      };
+      // Removed old combined handler and added separated ones
+      canvas.addEventListener("mousedown", handleMouseDown);
+      canvas.addEventListener("mouseup", handleMouseUp); // Dispara ao soltar o rato
+      canvas.addEventListener("touchstart", handleTouchStart);
+      canvas.addEventListener("touchend", handleTouchEnd); // Dispara ao soltar o toque
+      canvas.addEventListener("mousemove", handleMouseMove);
+      canvas.addEventListener("touchmove", handleTouchMove);
+    </script>
+  </body>
+</html>
